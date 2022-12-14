@@ -69,7 +69,13 @@ public:
     void AddDocument(int document_id, const string& document)
     {
         const vector<string> words = SplitIntoWordsNoStop(document);
+        set<string> unicWords;
+
         for (const string& word : words)
+        {
+            unicWords.insert(word);
+        }
+        for (const string& word : unicWords)
         {
             if (stop_words_.count(word) == 0)
             {
@@ -77,11 +83,12 @@ public:
                 word_to_document_freqs_[word][document_id] = tf;
             }
         }
+
         document_count_++;
     }
     vector<Document> FindTopDocuments(const string& raw_query) const
     {
-        const set<string> query_words = ParseQuery(raw_query);
+        const set<Word> query_words = ParseQuery(raw_query);
         auto matched_documents = FindAllDocuments(query_words);
 
         sort(matched_documents.begin(), matched_documents.end(), [](const Document& lhs, const Document& rhs) {return lhs.relevance > rhs.relevance; });
@@ -96,11 +103,23 @@ private:
     map<string, map<int, double>> word_to_document_freqs_;
     int document_count_ = 0;
     set<string> stop_words_;
+    struct Word
+    {
+        string word;
+        bool isMinus;
+    };
 
     bool IsStopWord(const string& word) const
     {
         return stop_words_.count(word) > 0;
     } // check if it is a non relevant word
+    bool isMinusWord(const string& word) const
+    {
+        if (word[0] == '-')
+            return true;
+        else
+            false;
+    }
     vector<string> SplitIntoWordsNoStop(const string& text) const
     {
         vector<string> words;
@@ -111,48 +130,48 @@ private:
         }
         return words;
     } // Parse text, excluding non important words
-    set<string> ParseQuery(const string& text) const
+    set<Word> ParseQuery(const string& text) const
     {
-        set<string> query_words;
-        for (const string& word : SplitIntoWordsNoStop(text))
+        set<Word> query_words;
+        for (const string& query_word : SplitIntoWordsNoStop(text))
         {
+            Word word;
+            word.word = query_word;
+            word.isMinus = isMinusWord(query_word);
             query_words.insert(word);
         }
         return query_words;
     }  // Get unic words in text
-    vector<Document> FindAllDocuments(const set<string>& query_words) const
+    double IDF(const string& word) const
+    {
+        double relevance = log(document_count_ / static_cast<double>(word_to_document_freqs_.at(word).size()));
+
+        return relevance;
+    } // Inverse Document Frequency for word
+    vector<Document> FindAllDocuments(const set<Word>& query_words) const
     {
         //[id, relevance]
         map<int, double> docs_id;
-        set<string> plus_words;
-        set<string> minus_words;
-        for (string word : query_words)
+        for (const Word& word : query_words)
         {
-            if (word[0] == '-')
+            if (!word.isMinus)
             {
-                word.erase(0, 1);
-                minus_words.insert(word);
+                if (word_to_document_freqs_.count(word.word) == 0)
+                    continue;
+                double relevance = IDF(word.word);
+                for (const auto& [id, tf] : word_to_document_freqs_.at(word.word))
+                {
+                    docs_id[id] += relevance * tf;
+                }
             }
             else
-                plus_words.insert(word);
-        }
-        for (const string& word : plus_words)
-        {
-            if (word_to_document_freqs_.count(word) == 0)
-                continue;
-            double relevance = log(document_count_ / static_cast<double>(word_to_document_freqs_.at(word).size()));
-            for (const auto& [id, tf] : word_to_document_freqs_.at(word))
             {
-                docs_id[id] += relevance * tf;
-            }
-        }
-        for (const string& word : minus_words)
-        {
-            if (word_to_document_freqs_.count(word) == 0)
-                continue;
-            for (const auto& [id, tf] : word_to_document_freqs_.at(word))
-            {
-                docs_id.erase(id);
+                if (word_to_document_freqs_.count(word.word) == 0)
+                    continue;
+                for (const auto& [id, tf] : word_to_document_freqs_.at(word.word))
+                {
+                    docs_id.erase(id);
+                }
             }
         }
         vector<Document> result;
