@@ -107,6 +107,11 @@ private:
     {
         string word;
         bool isMinus;
+
+        bool operator<(const Word& rhs) const noexcept
+        {
+            return this->word < rhs.word;
+        } // Needed so set would work at all with this
     };
 
     bool IsStopWord(const string& word) const
@@ -118,7 +123,7 @@ private:
         if (word[0] == '-')
             return true;
         else
-            false;
+            return false;
     }
     vector<string> SplitIntoWordsNoStop(const string& text) const
     {
