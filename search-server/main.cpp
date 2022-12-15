@@ -69,28 +69,11 @@ public:
     void AddDocument(int document_id, const string& document)
     {
         const vector<string> words = SplitIntoWordsNoStop(document);
-        set<string> unicWords;
-
+        const double inv_word_count = 1.0 / words.size();
         for (const string& word : words)
         {
-            unicWords.insert(word);
+            word_to_document_freqs_[word][document_id] += inv_word_count;
         }
-        for (const string& word : unicWords)
-        {
-            word_to_document_freqs_[word][document_id] = 0;
-        }
-        if (unicWords.size() != 0)
-        {
-            for (const string& word : words)
-            {
-                word_to_document_freqs_[word][document_id]++;
-            }
-            for (const string& word : unicWords)
-            {
-                word_to_document_freqs_[word][document_id] /= unicWords.size();
-            }
-        }
-
         document_count_++;
     }
     vector<Document> FindTopDocuments(const string& raw_query) const
