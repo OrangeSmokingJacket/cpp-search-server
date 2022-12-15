@@ -78,8 +78,8 @@ public:
     }
     vector<Document> FindTopDocuments(const string& raw_query) const
     {
-        const pair<set<string>, set<string>> query_words = ParseQuery(raw_query);
-        auto matched_documents = FindAllDocuments(query_words.first, query_words.second);
+        const Query query_words = ParseQuery(raw_query);
+        auto matched_documents = FindAllDocuments(query_words);
 
         sort(matched_documents.begin(), matched_documents.end(), [](const Document& lhs, const Document& rhs) {return lhs.relevance > rhs.relevance; });
 
@@ -93,6 +93,12 @@ private:
     map<string, map<int, double>> word_to_document_freqs_;
     int document_count_ = 0;
     set<string> stop_words_;
+
+    struct Query
+    {
+        set<string> plus_words;
+        set<string> minus_words;
+    };
 
     bool IsStopWord(const string& word) const
     {
@@ -115,24 +121,23 @@ private:
         }
         return words;
     } // Parse text, excluding non important words
-    pair<set<string>, set<string>> ParseQuery(const string& text) const
+    Query ParseQuery(const string& text) const
     {
-        set<string> plus_words;
-        set<string> minus_words;
+        Query query;
 
         for (string& word : SplitIntoWordsNoStop(text))
         {
             if (isMinusWord(word))
             {
                 word.erase(0, 1); // removes minus from the word
-                minus_words.insert(word);
+                query.minus_words.insert(word);
             }
             else
             {
-                plus_words.insert(word);
+                query.plus_words.insert(word);
             }
         }
-        return { plus_words, minus_words };
+        return query;
     }  // Returns 2 sets of plus and minus words separatly (in that order)
     double IDF(const string& word) const
     {
@@ -140,11 +145,11 @@ private:
 
         return relevance;
     } // Inverse Document Frequency for word
-    vector<Document> FindAllDocuments(const set<string>& plus_words, const set<string>& minus_words) const
+    vector<Document> FindAllDocuments(Query query) const
     {
         //[id, relevance]
         map<int, double> docs_id;
-        for (const string& word : plus_words)
+        for (const string& word : query.plus_words)
         {
             if (word_to_document_freqs_.count(word) == 0)
                 continue;
@@ -154,7 +159,7 @@ private:
                 docs_id[id] += relevance * tf;
             }
         }
-        for (const string& word : minus_words)
+        for (const string& word : query.minus_words)
         {
             if (word_to_document_freqs_.count(word) == 0)
                 continue;
