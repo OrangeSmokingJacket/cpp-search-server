@@ -53,7 +53,7 @@ vector<string> SplitIntoWords(const string& text)
 } // parse text into vector of words
 int ComputeIntegerAverage(const vector<int>& values)
 {
-    int size = values.size();
+    int size = static_cast<int>(values.size());
 
     if (size == 0)
         return 0;
@@ -122,8 +122,7 @@ public:
             word_to_document_freqs_[word][document_id] += inv_word_count;
         }
 
-        documents_ratings_[document_id] = ComputeIntegerAverage(ratings);
-        documents_statuses_[document_id] = status;
+        doc_rating_status_[document_id] = { ComputeIntegerAverage(ratings), status };
         document_count_++;
     }
     template <typename SortingFunction>
@@ -140,18 +139,20 @@ public:
 
         return matched_documents;
     } // Finds all matched documents (matching is determined by the function), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
-    vector<DocumentSearchData> FindTopDocuments(const string& raw_query, DocumentStatus status = DocumentStatus::ACTUAL) const
+    vector<DocumentSearchData> FindTopDocuments(const string& raw_query) const
     {
-        const Query query_words = ParseQuery(raw_query);
-        auto matched_documents = FindAllDocuments(query_words, status);
+        // I tried doing it that way
+        // Passing lambda as default is not working
+        // Here is my attempt:
 
-        sort(matched_documents.begin(), matched_documents.end(), [](const DocumentSearchData& lhs, const DocumentSearchData& rhs) { return lhs.relevance > rhs.relevance || (abs(lhs.relevance - rhs.relevance) <= EPSILON && lhs.rating > rhs.rating); });
+        //template <typename SortingFunction>
+        //vector<DocumentSearchData> FindTopDocuments(const string& raw_query, SortingFunction func = [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::ACTUAL; })
 
-        if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT)
-            matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
+        // But it didn't work...
+        // So here's my janky may of dealing with it...
 
-        return matched_documents;
-    } // Finds all matched documents (mathcing is determined by status), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
+        return FindTopDocuments(raw_query, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::ACTUAL; });
+    } // Finds all matched documents (matching is determined by the function), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
     int GetDocumentCount() const
     {
         return document_count_;
@@ -166,7 +167,7 @@ public:
         {
             if (word_to_document_freqs_.at(word).count(document_id) != 0)
             {
-                return tuple(plus_words, documents_statuses_.at(document_id));
+                return tuple(plus_words, doc_rating_status_.at(document_id).status);
             }
         }
         // If there is no minus words here, then find matches
@@ -178,16 +179,19 @@ public:
             }
         }
 
-        return tuple(plus_words, documents_statuses_.at(document_id));
+        return tuple(plus_words, doc_rating_status_.at(document_id).status);
     }
 
 private:
+    struct Rating_Status
+    {
+        int rating;
+        DocumentStatus status;
+    };
     map<string, map<int, double>> word_to_document_freqs_;
     int document_count_ = 0;
     set<string> stop_words_;
-    // Next 2 could be combined in one dictionary, but using it would be a nighmare... map<int, pair<int, DocumentStatus>> or as struct with 2 values, which also woun't make a lot of sence
-    map<int, int> documents_ratings_;
-    map<int, DocumentStatus> documents_statuses_;
+    map<int, Rating_Status> doc_rating_status_;
 
     struct Query
     {
@@ -253,7 +257,7 @@ private:
             double relevance = IDF(word);
             for (const auto& [id, tf] : word_to_document_freqs_.at(word))
             {
-                if (!func(id, documents_statuses_.at(id), documents_ratings_.at(id)))
+                if (!func(id, doc_rating_status_.at(id).status, doc_rating_status_.at(id).rating))
                     continue; // Don't even bother checking documents of other type
                 docs_id[id] += relevance * tf;
             }
@@ -270,39 +274,7 @@ private:
         vector<DocumentSearchData> result;
         for (const auto& [id, relevance] : docs_id)
         {
-            result.push_back({ id, relevance, documents_ratings_.at(id) });
-        }
-        return result;
-    } // Finds all somewhat relevant documents. Exeptance is regulated by the function with parameters: (id, status, rating)
-    vector<DocumentSearchData> FindAllDocuments(Query query, DocumentStatus status) const
-    {
-        //[id, relevance]
-        map<int, double> docs_id;
-        for (const string& word : query.plus_words)
-        {
-            if (word_to_document_freqs_.count(word) == 0)
-                continue;
-            double relevance = IDF(word);
-            for (const auto& [id, tf] : word_to_document_freqs_.at(word))
-            {
-                if (documents_statuses_.at(id) != status)
-                    continue; // Don't even bother checking documents of other type
-                docs_id[id] += relevance * tf;
-            }
-        }
-        for (const string& word : query.minus_words)
-        {
-            if (word_to_document_freqs_.count(word) == 0)
-                continue;
-            for (const auto& [id, tf] : word_to_document_freqs_.at(word))
-            {
-                docs_id.erase(id);
-            }
-        }
-        vector<DocumentSearchData> result;
-        for (const auto& [id, relevance] : docs_id)
-        {
-            result.push_back({ id, relevance, documents_ratings_.at(id) });
+            result.push_back({ id, relevance, doc_rating_status_.at(id).rating });
         }
         return result;
     } // Finds all somewhat relevant documents. Exeptance is regulated by the function with parameters: (id, status, rating)
