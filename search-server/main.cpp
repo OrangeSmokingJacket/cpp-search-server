@@ -139,20 +139,10 @@ public:
 
         return matched_documents;
     } // Finds all matched documents (matching is determined by the function), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
-    vector<DocumentSearchData> FindTopDocuments(const string& raw_query) const
+    vector<DocumentSearchData> FindTopDocuments(const string& raw_query, DocumentStatus status = DocumentStatus::ACTUAL) const
     {
-        // I tried doing it that way
-        // Passing lambda as default is not working
-        // Here is my attempt:
-
-        //template <typename SortingFunction>
-        //vector<DocumentSearchData> FindTopDocuments(const string& raw_query, SortingFunction func = [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::ACTUAL; })
-
-        // But it didn't work...
-        // So here's my janky may of dealing with it...
-
-        return FindTopDocuments(raw_query, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::ACTUAL; });
-    } // Finds all matched documents (matching is determined by the function), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
+        return FindTopDocuments(raw_query, [status](int document_id, DocumentStatus doc_status, int rating) { return doc_status == status; });
+    } // Finds all matched documents (matching is determined by the status), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
     int GetDocumentCount() const
     {
         return document_count_;
@@ -222,7 +212,6 @@ private:
     } // Parse text, excluding non important words
     Query ParseQuery(const string& text) const
     {
-        // В предыдущем спринте в финальном задании у меня была структура Word с булевыми полями, но после ревью она была заменена на эту (два массива с + и - словами)
         Query query;
 
         for (string& word : SplitIntoWordsNoStop(text))
