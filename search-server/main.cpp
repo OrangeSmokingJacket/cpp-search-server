@@ -137,7 +137,7 @@ public:
     {
         if (document_id < 0)
             throw invalid_argument("id can't be negative. Got: " + document_id + '.');
-        if (count(ids_.begin(), ids_.end(), document_id) > 0)
+        if (count(doc_rating_status_.begin(), doc_rating_status_.end(), document_id) > 0)
             throw invalid_argument("This id already exists: " + document_id + '.');
 
         const vector<string> words = SplitIntoWordsNoStop(document);
