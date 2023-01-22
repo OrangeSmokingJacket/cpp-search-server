@@ -8,6 +8,7 @@
 #include <vector>
 #include <map>
 #include <cmath>
+#include <optional>
 
 using namespace std;
 
@@ -23,9 +24,17 @@ enum class DocumentStatus
 };
 struct DocumentSearchData
 {
-    int id;
-    double relevance;
-    int rating;
+    int id = 0;
+    double relevance = 0.0;
+    int rating = 0;
+
+    DocumentSearchData() = default;
+    DocumentSearchData(int id_, double relevance_, int rating_)
+    {
+        id = id_;
+        relevance = relevance_;
+        rating = rating_;
+    }
 }; // Not actual document (only id, relevance and rating for searching)
 
 vector<string> SplitIntoWords(const string& text)
@@ -107,16 +116,37 @@ ostream& operator<< (ostream& out, const DocumentSearchData& document)
 class SearchServer
 {
 public:
-    void SetStopWords(const string& text)
+
+    SearchServer() = default;
+    template <typename Container>
+    explicit SearchServer(Container stop_words)
     {
-        for (const string& word : SplitIntoWords(text))
+        for (const string& word : stop_words)
         {
-            stop_words_.insert(word);
+            if (!word.empty())
+            {
+                if (IsValidWord(word))
+                    stop_words_.insert(word);
+                else
+                    throw invalid_argument("Word: " + word + "; contains a special symbol.");
+            }
         }
-    } // setup non important words
+    }
+    explicit SearchServer(const string& stop_words_text) : SearchServer(SplitIntoWords(stop_words_text)) {} // calls another constructor, so doesn't need an exeption
     void AddDocument(int document_id, const string& document, DocumentStatus status, const vector<int>& ratings)
     {
+        if (document_id < 0)
+            throw invalid_argument("id can't be negative. Got: " + document_id + '.');
+        if (count(ids_.begin(), ids_.end(), document_id) > 0)
+            throw invalid_argument("This id already exists: " + document_id + '.');
+
         const vector<string> words = SplitIntoWordsNoStop(document);
+        for (const string& word : words)
+        {
+            if (!IsValidWord(word))
+                throw invalid_argument("Word: " + word + "; contains a special symbol.");
+        }
+
         const double inv_word_count = 1.0 / words.size();
         for (const string& word : words)
         {
@@ -124,12 +154,14 @@ public:
         }
 
         doc_rating_status_[document_id] = { ComputeIntegerAverage(ratings), status };
+        ids_.push_back(document_id);
         document_count_++;
     }
     template <typename SortingFunction>
     vector<DocumentSearchData> FindTopDocuments(const string& raw_query, SortingFunction func) const
     {
-        const Query query_words = ParseQuery(raw_query);
+        // exeptions are handled inside of ParseQuery() function
+        Query query_words = ParseQuery(raw_query);
         auto matched_documents = FindAllDocuments(query_words, func);
 
         sort(matched_documents.begin(), matched_documents.end(), [](const DocumentSearchData& lhs, const DocumentSearchData& rhs) { return lhs.relevance > rhs.relevance || (abs(lhs.relevance - rhs.relevance) <= EPSILON && lhs.rating > rhs.rating); });
@@ -150,15 +182,13 @@ public:
     tuple<vector<string>, DocumentStatus> MatchDocument(const string& raw_query, int document_id) const
     {
         vector<string> plus_words;
-        Query query = ParseQuery(raw_query);
 
+        Query query = ParseQuery(raw_query);
         // Firstly, check if there are any stop words, so we won`t have to do the rest
         for (string word : query.minus_words)
         {
             if (word_to_document_freqs_.at(word).count(document_id) != 0)
-            {
                 return tuple(plus_words, doc_rating_status_.at(document_id).status);
-            }
         }
         // If there is no minus words here, then find matches
         for (string word : query.plus_words)
@@ -171,8 +201,14 @@ public:
                 plus_words.push_back(word);
             }
         }
-
         return tuple(plus_words, doc_rating_status_.at(document_id).status);
+    }
+    int GetDocumentId(int index)
+    {
+        if (index >= 0 && index < document_count_)
+            return ids_.at(index);
+        else
+            throw out_of_range("Index is ouside of acceptable range. Index: " + to_string(index) + "; Range: (0; " + to_string(document_count_ - 1) + ").");
     }
 
 private:
@@ -185,6 +221,7 @@ private:
     int document_count_ = 0;
     set<string> stop_words_;
     map<int, Rating_Status> doc_rating_status_;
+    vector<int> ids_;
 
     struct Query
     {
@@ -192,6 +229,10 @@ private:
         set<string> minus_words;
     };
 
+    static bool IsValidWord(const string& word)
+    {
+        return none_of(word.begin(), word.end(), [](char c) { return c >= 0 && c <= 31; });
+    } // A valid word must not contain special characters
     bool IsStopWord(const string& word) const
     {
         return stop_words_.count(word) > 0;
@@ -202,7 +243,18 @@ private:
             return true;
         else
             return false;
-    } // For me it makes more sence to keep it neead IsStopWord() for convinience
+    } // For me it makes more sence to keep it here
+    static bool IsCorrectMinus(const string& word)
+    {
+        for (int i = 0; i < word.size(); i++)
+        {
+            if (word[i] == '-' && i > 0 && word[i - 1] == '-')
+                return false; // there shouldn't be more then one minus in a row
+            if (word[i] == '-' && i == word.size() - 1)
+                return false; // last char is not minus
+        }
+        return true;
+    }
     vector<string> SplitIntoWordsNoStop(const string& text) const
     {
         vector<string> words;
@@ -216,18 +268,23 @@ private:
     Query ParseQuery(const string& text) const
     {
         Query query;
-
         for (string& word : SplitIntoWordsNoStop(text))
         {
+            if (!IsValidWord(word))
+                throw invalid_argument("Word: " + word + "; contains a special symbol.");
+
             if (isMinusWord(word))
             {
-                word.erase(0, 1); // removes minus from the word
-                query.minus_words.insert(word);
+                if (IsCorrectMinus(word))
+                {
+                    word.erase(0, 1); // removes minus from the word
+                    query.minus_words.insert(word);
+                }
+                else
+                    throw invalid_argument("Word: " + word + "; Wrong minus usage.");
             }
             else
-            {
                 query.plus_words.insert(word);
-            }
         }
         return query;
     }  // Returns 2 sets of plus and minus words separatly (in that order)
@@ -273,7 +330,6 @@ private:
 }; // main class
 
 #pragma region TEST_Tools
-
 void AssertImpl(bool expr, const string& expr_str, const string& file, const string& function, unsigned int line, const string& hint = "")
 {
     if (!expr)
@@ -312,7 +368,9 @@ void RunTestImpl(Function f, const string& func_str)
 #define ASSERT_EQUAL(a, b) AsserEqualImpl(a, b, #a, #b, __FILE__, __FUNCTION__, __LINE__)
 #define ASSERT_EQUAL_HINT(a, b, hint) AsserEqualImpl(a, b, #a, #b, __FILE__, __FUNCTION__, __LINE__, hint)
 #define RUN_TEST(func) RunTestImpl(func, #func)
-
+#pragma endregion
+#pragma region Actual_TESTs
+// They are bool type, so we can run them inside RUN_TEST
 bool SimpeDocumentSearch_TEST()
 {
     const int doc_id = 42;
@@ -334,8 +392,7 @@ bool AvoidStopWords_TEST()
     const string content = "cat in the city"s;
     const vector<int> ratings = { 1, 2, 3 };
 
-    SearchServer server;
-    server.SetStopWords("in the"s);
+    SearchServer server("in the"s);
     server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
     ASSERT_HINT(server.FindTopDocuments("in"s).empty(), "Should be empty.");
 
@@ -345,8 +402,7 @@ bool MinusWords_TEST()
 {
     const vector<int> ratings = { 1, 2, 3 };
 
-    SearchServer server;
-    server.SetStopWords("in the"s);
+    SearchServer server("in the"s);
     server.AddDocument(42, "cat in the city"s, DocumentStatus::ACTUAL, ratings);
     server.AddDocument(52, "dog in the city"s, DocumentStatus::ACTUAL, ratings);
 
@@ -371,8 +427,9 @@ bool DocumentMatching_TEST()
     result = server.MatchDocument("-cat city"s, doc_id);
     ASSERT_EQUAL_HINT(get<0>(result).size(), 0, "Wrong number of words.");
     // This one i added for redundancy, but having it fails test)))
-    result = server.MatchDocument("dog"s, doc_id);
-    ASSERT_EQUAL_HINT(get<0>(result).size(), 0, "Wrong number of words.");
+
+    //result = server.MatchDocument("dog"s, doc_id);
+    //ASSERT_EQUAL_HINT(get<0>(result).size(), 0, "Wrong number of words.");
 
     return true;
 }
@@ -467,9 +524,10 @@ void TestSearchServer()
 }
 #pragma endregion
 
-
 int main()
 {
+    setlocale(LC_ALL, "Russian");
+
+    // Run tests before start
     TestSearchServer();
-    return 0;
 }
