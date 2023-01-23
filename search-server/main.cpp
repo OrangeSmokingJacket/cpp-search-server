@@ -289,14 +289,16 @@ private:
     Query ParseQuery(const string& text) const
     {
         Query query;
-        for (string& word : SplitIntoWordsNoStop(text))
+        for (string& word : SplitIntoWords(text))
         {
             Word valid_word = ValidateWord(word);
+            if (IsStopWord(valid_word.word))
+                continue;
 
             if (valid_word.status == WordStatus::Minus)
-                query.minus_words.insert(word);
+                query.minus_words.insert(valid_word.word);
             else
-                query.plus_words.insert(word);
+                query.plus_words.insert(valid_word.word);
         }
         return query;
     }  // Returns 2 sets of plus and minus words separatly (in that order)
