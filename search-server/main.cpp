@@ -228,7 +228,16 @@ private:
         set<string> plus_words;
         set<string> minus_words;
     };
-
+    enum class WordStatus
+    {
+        Plus,
+        Minus
+    };
+    struct Word
+    {
+        string word;
+        WordStatus status;
+    };
     static bool IsValidWord(const string& word)
     {
         return none_of(word.begin(), word.end(), [](char c) { return c >= 0 && c <= 31; });
@@ -246,14 +255,29 @@ private:
     } // For me it makes more sence to keep it here
     static bool IsCorrectMinus(const string& word)
     {
+        if (word[word.size() - 1] == '-')
+            return false; // last char is not minus
         for (int i = 0; i < word.size(); i++)
         {
             if (word[i] == '-' && i > 0 && word[i - 1] == '-')
-                return false; // there shouldn't be more then one minus in a row
-            if (word[i] == '-' && i == word.size() - 1)
-                return false; // last char is not minus
+                return false; // there shouldn't be more then one minus in a row; also hadles double minus in the center: situations like to--do
         }
         return true;
+    }
+    Word ValidateWord(const string& word) const
+    {
+        Word valid_word;
+        valid_word.word = word;
+        if (!IsValidWord(word))
+            throw invalid_argument("Word: " + word + "; contains a special symbol.");
+        if (isMinusWord(word) && IsCorrectMinus(word))
+        {
+            valid_word.word.erase(0, 1); // removes minus from the word
+            valid_word.status = WordStatus::Minus;
+            return valid_word;
+        }
+        valid_word.status = WordStatus::Plus;
+        return valid_word;
     }
     vector<string> SplitIntoWordsNoStop(const string& text) const
     {
@@ -270,19 +294,10 @@ private:
         Query query;
         for (string& word : SplitIntoWordsNoStop(text))
         {
-            if (!IsValidWord(word))
-                throw invalid_argument("Word: " + word + "; contains a special symbol.");
+            Word valid_word = ValidateWord(word);
 
-            if (isMinusWord(word))
-            {
-                if (IsCorrectMinus(word))
-                {
-                    word.erase(0, 1); // removes minus from the word
-                    query.minus_words.insert(word);
-                }
-                else
-                    throw invalid_argument("Word: " + word + "; Wrong minus usage.");
-            }
+            if (valid_word.status == WordStatus::Minus)
+                query.minus_words.insert(word);
             else
                 query.plus_words.insert(word);
         }
