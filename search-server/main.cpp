@@ -137,7 +137,7 @@ public:
     {
         if (document_id < 0)
             throw invalid_argument("id can't be negative. Got: " + document_id + '.');
-        if (count(doc_rating_status_.begin(), doc_rating_status_.end(), document_id) > 0)
+        if (doc_rating_status_.count(document_id) > 0)
             throw invalid_argument("This id already exists: " + document_id + '.');
 
         const vector<string> words = SplitIntoWordsNoStop(document);
@@ -255,13 +255,10 @@ private:
     } // For me it makes more sence to keep it here
     static bool IsCorrectMinus(const string& word)
     {
-        if (word[word.size() - 1] == '-')
+        if (word == "-")
             return false; // last char is not minus
-        for (int i = 0; i < word.size(); i++)
-        {
-            if (word[i] == '-' && i > 0 && word[i - 1] == '-')
-                return false; // there shouldn't be more then one minus in a row; also hadles double minus in the center: situations like to--do
-        }
+        if (word[1] == '-') // couldn't be done in one if; will result in error if word has only ona character
+            return false;
         return true;
     }
     Word ValidateWord(const string& word) const
