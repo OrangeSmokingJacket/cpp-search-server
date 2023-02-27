@@ -9,8 +9,8 @@
 #include <queue>
 #include <string>
 
-#include "read_input_functions.h"
 #include "string_processing.h"
+#include "read_input_functions.h"
 #include "document.h"
 #include "search_server.h"
 #include "paginator.h"

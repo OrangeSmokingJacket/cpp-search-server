@@ -2,6 +2,8 @@
 
 #include <vector>
 
+#include "document.h"
+
 class Paginator
 {
 public:
@@ -21,7 +23,7 @@ public:
                 page.content.push_back(*it);
             else
             {
-                page.pageSize = page.content.size();
+                page.pageSize = static_cast<int>(page.content.size());
                 pages.push_back(page);
                 page.content.clear();
                 page.pageSize = 0;
@@ -30,7 +32,7 @@ public:
         }
         if (page.content.size() != 0)
         {
-            page.pageSize = page.content.size();
+            page.pageSize = static_cast<int>(page.content.size());
             pages.push_back(page);
         }
     }
@@ -60,5 +62,5 @@ private:
 template <typename Container>
 Paginator Paginate(const Container& c, size_t page_size)
 {
-    return Paginator(begin(c), end(c), page_size);
+    return Paginator(begin(c), end(c), static_cast<int>(page_size));
 }

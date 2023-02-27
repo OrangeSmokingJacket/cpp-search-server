@@ -6,6 +6,8 @@
 #include <string>
 #include <cmath>
 #include <algorithm>
+#include <numeric>
+#include <stdexcept>
 
 #include "document.h"
 #include "string_processing.h"
@@ -32,30 +34,7 @@ public:
         }
     }
     explicit SearchServer(const std::string& stop_words_text) : SearchServer(SplitIntoWords(stop_words_text)) {} // calls another constructor, so doesn't need an exeption
-    void AddDocument(int document_id, const std::string& document, DocumentStatus status, const std::vector<int>& ratings)
-    {
-        if (document_id < 0)
-            throw std::invalid_argument("id can't be negative. Got: " + document_id + '.');
-        if (doc_rating_status.count(document_id) > 0)
-            throw std::invalid_argument("This id already exists: " + document_id + '.');
-
-        const std::vector<std::string> words = SplitIntoWordsNoStop(document);
-        for (const std::string& word : words)
-        {
-            if (!IsValidWord(word))
-                throw std::invalid_argument("Word: " + word + "; contains a special symbol.");
-        }
-
-        const double inv_word_count = 1.0 / words.size();
-        for (const std::string& word : words)
-        {
-            word_to_document_freqs[word][document_id] += inv_word_count;
-        }
-
-        doc_rating_status[document_id] = { ComputeIntegerAverage(ratings), status };
-        ids.push_back(document_id);
-        document_count++;
-    }
+    void AddDocument(int document_id, const std::string& document, DocumentStatus status, const std::vector<int>& ratings);
     template <typename SortingFunction>
     std::vector<Document> FindTopDocuments(const std::string& raw_query, SortingFunction func) const
     {
@@ -74,41 +53,9 @@ public:
     {
         return FindTopDocuments(raw_query, [status](int document_id, DocumentStatus doc_status, int rating) { return doc_status == status; });
     } // Finds all matched documents (matching is determined by the status), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
-    std::tuple<std::vector<std::string>, DocumentStatus> MatchDocument(const std::string& raw_query, int document_id) const
-    {
-        std::vector<std::string> plus_words;
-
-        Query query = ParseQuery(raw_query);
-        // Firstly, check if there are any stop words, so we won`t have to do the rest
-        for (std::string word : query.minus_words)
-        {
-            if (word_to_document_freqs.at(word).count(document_id) != 0)
-                return std::tuple(plus_words, doc_rating_status.at(document_id).status);
-        }
-        // If there is no minus words here, then find matches
-        for (std::string word : query.plus_words)
-        {
-            if (word_to_document_freqs.count(word) == 0)
-                continue;
-
-            if (word_to_document_freqs.at(word).count(document_id) != 0)
-            {
-                plus_words.push_back(word);
-            }
-        }
-        return std::tuple(plus_words, doc_rating_status.at(document_id).status);
-    }
-    int GetDocumentCount() const
-    {
-        return document_count;
-    } // A way to access private field (as read only)
-    int GetDocumentId(int index)
-    {
-    if (index >= 0 && index < document_count)
-        return ids.at(index);
-    else
-        throw std::out_of_range("Index is ouside of acceptable range. Index: " + std::to_string(index) + "; Range: (0; " + std::to_string(document_count - 1) + ").");
-    }
+    std::tuple<std::vector<std::string>, DocumentStatus> MatchDocument(const std::string& raw_query, int document_id) const;
+    int GetDocumentCount() const;// A way to access private field (as read only)
+    int GetDocumentId(int index);
 private:
     struct Rating_Status
     {
@@ -136,10 +83,7 @@ private:
         std::string word;
         WordStatus status;
     };
-    bool IsStopWord(const std::string& word) const
-    {
-        return stop_words.count(word) > 0;
-    } // check if it is a non relevant word
+    bool IsStopWord(const std::string& word) const; // check if it is a non relevant word
     static bool IsValidWord(const std::string& word)
     {
         return none_of(word.begin(), word.end(), [](char c) { return c >= 0 && c <= 31; });
@@ -164,62 +108,20 @@ private:
             return false;
         return true;
     }
-    Word ValidateWord(const std::string& word) const
-    {
-        Word valid_word;
-        valid_word.word = word;
-        if (!IsValidWord(word))
-            throw std::invalid_argument("Word: " + word + "; contains a special symbol.");
-        if (isMinusWord(word))
-        {
-            valid_word.word.erase(0, 1); // removes minus from the word
-            valid_word.status = WordStatus::Minus;
-            return valid_word;
-        }
-        valid_word.status = WordStatus::Plus;
-        return valid_word;
-    }
-    std::vector<std::string> SplitIntoWordsNoStop(const std::string& text) const
-    {
-        std::vector<std::string> words;
-        for (const std::string& word : SplitIntoWords(text))
-        {
-            if (!IsStopWord(word))
-                words.push_back(word);
-        }
-        return words;
-    } // Parse text, excluding non important words
-    Query ParseQuery(const std::string& text) const
-    {
-        Query query;
-        for (std::string& word : SplitIntoWords(text))
-        {
-            Word valid_word = ValidateWord(word);
-            if (IsStopWord(valid_word.word))
-                continue;
-
-            if (valid_word.status == WordStatus::Minus)
-                query.minus_words.insert(valid_word.word);
-            else
-                query.plus_words.insert(valid_word.word);
-        }
-        return query;
-    }  // Returns 2 sets of plus and minus words separatly (in that order)
-    int ComputeIntegerAverage(const std::vector<int>& values)
+    static int ComputeIntegerAverage(const std::vector<int>& values)
     {
         int size = static_cast<int>(values.size());
 
         if (size == 0)
             return 0;
         else
-            return accumulate(values.begin(), values.end(), 0) / size;
+            return std::accumulate(values.begin(), values.end(), 0) / size;
     } // Basic average, exept result will be integer (not sure why)
-    double IDF(const std::string& word) const
-    {
-        double relevance = log(document_count / static_cast<double>(word_to_document_freqs.at(word).size()));
+    Word ValidateWord(const std::string& word) const;
+    std::vector<std::string> SplitIntoWordsNoStop(const std::string& text) const; // Parse text, excluding non important words
+    Query ParseQuery(const std::string& text) const; // Returns 2 sets of plus and minus words separatly (in that order)
 
-        return relevance;
-    } // Inverse Document Frequency for word
+    double IDF(const std::string& word) const; // Inverse Document Frequency for word
     template <typename SortingFunction>
     std::vector<Document> FindAllDocuments(Query query, SortingFunction func) const
     {
