@@ -24,8 +24,11 @@ void SearchServer::AddDocument(int document_id, const string& document, Document
 
     doc_rating_status[document_id] = { ComputeIntegerAverage(ratings), status };
     ids.push_back(document_id);
-    document_count++;
 }
+vector<Document> SearchServer::FindTopDocuments(const string& raw_query, DocumentStatus status) const
+{
+    return FindTopDocuments(raw_query, [status](int document_id, DocumentStatus doc_status, int rating) { return doc_status == status; });
+} // Finds all matched documents (matching is determined by the status), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
 tuple<vector<string>, DocumentStatus> SearchServer::MatchDocument(const string& raw_query, int document_id) const
 {
     vector<string> plus_words;
@@ -52,14 +55,14 @@ tuple<vector<string>, DocumentStatus> SearchServer::MatchDocument(const string& 
 }
 int SearchServer::GetDocumentCount() const
 {
-    return document_count;
+    return static_cast<int>(doc_rating_status.size());
 }
 int SearchServer::GetDocumentId(int index)
 {
-    if (index >= 0 && index < document_count)
+    if (index >= 0 && index < static_cast<int>(doc_rating_status.size()))
         return ids.at(index);
     else
-        throw out_of_range("Index is ouside of acceptable range. Index: " + to_string(index) + "; Range: (0; " + to_string(document_count - 1) + ").");
+        throw out_of_range("Index is ouside of acceptable range. Index: " + to_string(index) + "; Range: (0; " + to_string(static_cast<int>(doc_rating_status.size()) - 1) + ").");
 }
 
 bool SearchServer::IsStopWord(const string& word) const
@@ -72,7 +75,7 @@ SearchServer::Word SearchServer::ValidateWord(const string& word) const
     valid_word.word = word;
     if (!IsValidWord(word))
         throw invalid_argument("Word: " + word + "; contains a special symbol.");
-    if (isMinusWord(word))
+    if (IsMinusWord(word))
     {
         valid_word.word.erase(0, 1); // removes minus from the word
         valid_word.status = WordStatus::Minus;
@@ -108,9 +111,9 @@ SearchServer::Query SearchServer::ParseQuery(const string& text) const
     return query;
 }  // Returns 2 sets of plus and minus words separatly (in that order)
 
-double SearchServer::IDF(const std::string& word) const
+double SearchServer::Calculate_IDF(const std::string& word) const
 {
-    double relevance = log(document_count / static_cast<double>(word_to_document_freqs.at(word).size()));
+    double relevance = log(static_cast<int>(doc_rating_status.size()) / static_cast<double>(word_to_document_freqs.at(word).size()));
 
     return relevance;
 } // Inverse Document Frequency for word

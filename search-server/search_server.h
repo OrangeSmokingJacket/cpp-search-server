@@ -18,6 +18,7 @@ const int MAX_RESULT_DOCUMENT_COUNT = 5;
 class SearchServer
 {
 public:
+#pragma region Constructors
     SearchServer() = default;
     template <typename Container>
     explicit SearchServer(Container stop_words_to_add)
@@ -33,8 +34,10 @@ public:
             }
         }
     }
-    explicit SearchServer(const std::string& stop_words_text) : SearchServer(SplitIntoWords(stop_words_text)) {} // calls another constructor, so doesn't need an exeption
+    explicit SearchServer(const std::string& stop_words_text) : SearchServer(SplitIntoWords(stop_words_text)) {} // oneliner doesn't hurt
+#pragma endregion
     void AddDocument(int document_id, const std::string& document, DocumentStatus status, const std::vector<int>& ratings);
+
     template <typename SortingFunction>
     std::vector<Document> FindTopDocuments(const std::string& raw_query, SortingFunction func) const
     {
@@ -49,12 +52,13 @@ public:
 
         return matched_documents;
     } // Finds all matched documents (matching is determined by the function), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
-    std::vector<Document> FindTopDocuments(const std::string& raw_query, DocumentStatus status = DocumentStatus::ACTUAL) const
-    {
-        return FindTopDocuments(raw_query, [status](int document_id, DocumentStatus doc_status, int rating) { return doc_status == status; });
-    } // Finds all matched documents (matching is determined by the status), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
+
+    std::vector<Document> FindTopDocuments(const std::string& raw_query, DocumentStatus status = DocumentStatus::ACTUAL) const;
+
     std::tuple<std::vector<std::string>, DocumentStatus> MatchDocument(const std::string& raw_query, int document_id) const;
-    int GetDocumentCount() const;// A way to access private field (as read only)
+
+    int GetDocumentCount() const;
+
     int GetDocumentId(int index);
 private:
     struct Rating_Status
@@ -63,7 +67,6 @@ private:
         DocumentStatus status;
     };
     std::map<std::string, std::map<int, double>> word_to_document_freqs;
-    int document_count = 0;
     std::set<std::string> stop_words;
     std::map<int, Rating_Status> doc_rating_status;
     std::vector<int> ids;
@@ -75,20 +78,21 @@ private:
     };
     enum class WordStatus
     {
-        Plus,
-        Minus
+        Plus = 0,
+        Minus = 1
     };
     struct Word
     {
         std::string word;
         WordStatus status;
     };
+
     bool IsStopWord(const std::string& word) const; // check if it is a non relevant word
     static bool IsValidWord(const std::string& word)
     {
         return none_of(word.begin(), word.end(), [](char c) { return c >= 0 && c <= 31; });
     } // A valid word must not contain special characters
-    static bool isMinusWord(const std::string& word)
+    static bool IsMinusWord(const std::string& word)
     {
         if (word[0] == '-')
         {
@@ -117,11 +121,13 @@ private:
         else
             return std::accumulate(values.begin(), values.end(), 0) / size;
     } // Basic average, exept result will be integer (not sure why)
+
     Word ValidateWord(const std::string& word) const;
     std::vector<std::string> SplitIntoWordsNoStop(const std::string& text) const; // Parse text, excluding non important words
     Query ParseQuery(const std::string& text) const; // Returns 2 sets of plus and minus words separatly (in that order)
 
-    double IDF(const std::string& word) const; // Inverse Document Frequency for word
+    double Calculate_IDF(const std::string& word) const; // Inverse Document Frequency for word
+
     template <typename SortingFunction>
     std::vector<Document> FindAllDocuments(Query query, SortingFunction func) const
     {
@@ -131,7 +137,7 @@ private:
         {
             if (word_to_document_freqs.count(word) == 0)
                 continue;
-            double relevance = IDF(word);
+            double relevance = Calculate_IDF(word);
             for (const auto& [id, tf] : word_to_document_freqs.at(word))
             {
                 if (!func(id, doc_rating_status.at(id).status, doc_rating_status.at(id).rating))

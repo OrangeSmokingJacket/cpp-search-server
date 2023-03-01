@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iostream>
+
 // There are only 2 functions, so addition of .cpp for them seems unnecessary
 struct Document
 {
@@ -21,3 +23,6 @@ enum class DocumentStatus
     BANNED,
     REMOVED
 };
+
+void PrintDocument(const Document& document);
+std::ostream& operator<< (std::ostream& out, const Document& document);
