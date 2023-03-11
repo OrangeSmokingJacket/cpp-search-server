@@ -2,22 +2,6 @@
 
 using namespace std;
 
-template <typename Container>
-SearchServer::SearchServer(Container stop_words_to_add)
-{
-    for (const string& word : stop_words_to_add)
-    {
-        if (!word.empty())
-        {
-            if (IsValidWord(word))
-                stop_words.insert(word);
-            else
-                throw invalid_argument("Word: " + word + "; contains a special symbol.");
-        }
-    }
-}
-SearchServer::SearchServer(const string& stop_words_text) : SearchServer(SplitIntoWords(stop_words_text)) {}
-
 void SearchServer::AddDocument(int document_id, const string& document, DocumentStatus status, const vector<int>& ratings)
 {
     if (document_id < 0)
@@ -41,20 +25,6 @@ void SearchServer::AddDocument(int document_id, const string& document, Document
     doc_rating_status[document_id] = { ComputeIntegerAverage(ratings), status };
     ids.push_back(document_id);
 }
-template <typename SortingFunction>
-vector<Document> SearchServer::FindTopDocuments(const string& raw_query, SortingFunction func) const
-{
-    // exeptions are handled inside of ParseQuery() function
-    Query query_words = ParseQuery(raw_query);
-    auto matched_documents = FindAllDocuments(query_words, func);
-
-    sort(matched_documents.begin(), matched_documents.end(), [](const Document& lhs, const Document& rhs) { return lhs.relevance > rhs.relevance || (std::abs(lhs.relevance - rhs.relevance) <= EPSILON && lhs.rating > rhs.rating); });
-
-    if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT)
-        matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
-
-    return matched_documents;
-} // Finds all matched documents (matching is determined by the function), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
 vector<Document> SearchServer::FindTopDocuments(const string& raw_query, DocumentStatus status) const
 {
     return FindTopDocuments(raw_query, [status](int document_id, DocumentStatus doc_status, int rating) { return doc_status == status; });
@@ -147,37 +117,3 @@ double SearchServer::Calculate_IDF(const std::string& word) const
 
     return relevance;
 } // Inverse Document Frequency for word
-
-template <typename SortingFunction>
-vector<Document> SearchServer::FindAllDocuments(Query query, SortingFunction func) const
-{
-    //[id, relevance]
-    map<int, double> docs_id;
-    for (const string& word : query.plus_words)
-    {
-        if (word_to_document_freqs.count(word) == 0)
-            continue;
-        double relevance = Calculate_IDF(word);
-        for (const auto& [id, tf] : word_to_document_freqs.at(word))
-        {
-            if (!func(id, doc_rating_status.at(id).status, doc_rating_status.at(id).rating))
-                continue; // Don't even bother checking documents of other type
-            docs_id[id] += relevance * tf;
-        }
-    }
-    for (const string& word : query.minus_words)
-    {
-        if (word_to_document_freqs.count(word) == 0)
-            continue;
-        for (const auto& [id, tf] : word_to_document_freqs.at(word))
-        {
-            docs_id.erase(id);
-        }
-    }
-    vector<Document> result;
-    for (const auto& [id, relevance] : docs_id)
-    {
-        result.push_back({ id, relevance, doc_rating_status.at(id).rating });
-    }
-    return result;
-} // Finds all somewhat relevant documents. Exeptance is regulated by the function with parameters: (id, status, rating)
