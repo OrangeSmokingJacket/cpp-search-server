@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+#include <map>
 #include <iostream>
 
 // There are only 2 functions, so addition of .cpp for them seems unnecessary
@@ -15,7 +17,7 @@ struct Document
         relevance = relevance_;
         rating = rating_;
     }
-}; // Not actual document (only id, relevance and rating for searching)
+};
 enum class DocumentStatus
 {
     ACTUAL,

@@ -2,14 +2,14 @@
 
 using namespace std;
 
-void SearchServer::AddDocument(int document_id, const string& document, DocumentStatus status, const vector<int>& ratings)
+void SearchServer::AddDocument(int document_id, const string& text_document, DocumentStatus status, const vector<int>& ratings)
 {
     if (document_id < 0)
         throw invalid_argument("id can't be negative. Got: " + document_id + '.');
     if (doc_rating_status.count(document_id) > 0)
         throw invalid_argument("This id already exists: " + document_id + '.');
 
-    const vector<string> words = SplitIntoWordsNoStop(document);
+    const vector<string> words = SplitIntoWordsNoStop(text_document);
     for (const string& word : words)
     {
         if (!IsValidWord(word))
@@ -25,12 +25,29 @@ void SearchServer::AddDocument(int document_id, const string& document, Document
     doc_rating_status[document_id] = { ComputeIntegerAverage(ratings), status };
     ids.push_back(document_id);
 }
+void SearchServer::RemoveDocument(int document_id)
+{
+    ids.erase(find(ids.begin(), ids.end(), document_id));
+    doc_rating_status.erase(document_id);
+    for (auto i = word_to_document_freqs.begin(); i != word_to_document_freqs.end(); i++)
+    {
+        for (auto j = (*i).second.begin(); j != (*i).second.end(); j++)
+        {
+            if ((*j).first == document_id)
+            {
+                (*i).second.erase((*j).first);
+                break;
+            }
+        }
+    }
+}
 vector<Document> SearchServer::FindTopDocuments(const string& raw_query, DocumentStatus status) const
 {
     return FindTopDocuments(raw_query, [status](int document_id, DocumentStatus doc_status, int rating) { return doc_status == status; });
 } // Finds all matched documents (matching is determined by the status), then returns top ones (determine by MAX_RESULT_DOCUMENT_COUNT const)
 tuple<vector<string>, DocumentStatus> SearchServer::MatchDocument(const string& raw_query, int document_id) const
 {
+    //LOG_DURATION_STREAM("Operation time", cout);
     vector<string> plus_words;
 
     Query query = ParseQuery(raw_query);
@@ -56,13 +73,6 @@ tuple<vector<string>, DocumentStatus> SearchServer::MatchDocument(const string& 
 int SearchServer::GetDocumentCount() const
 {
     return static_cast<int>(doc_rating_status.size());
-}
-int SearchServer::GetDocumentId(int index)
-{
-    if (index >= 0 && index < static_cast<int>(doc_rating_status.size()))
-        return ids.at(index);
-    else
-        throw out_of_range("Index is ouside of acceptable range. Index: " + to_string(index) + "; Range: (0; " + to_string(static_cast<int>(doc_rating_status.size()) - 1) + ").");
 }
 
 bool SearchServer::IsStopWord(const string& word) const

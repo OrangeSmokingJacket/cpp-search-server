@@ -65,5 +65,3 @@ Paginator Paginate(const Container& c, size_t page_size)
 {
     return Paginator(begin(c), end(c), static_cast<int>(page_size));
 }
-
-std::ostream& operator<< (std::ostream& out, const Paginator::Page& page);

@@ -11,6 +11,7 @@
 
 #include "document.h"
 #include "string_processing.h"
+#include "log_duration.h"
 
 const double EPSILON = 1e-6;
 const int MAX_RESULT_DOCUMENT_COUNT = 5;
@@ -21,10 +22,11 @@ public:
 #pragma region Constructors
     SearchServer() = default;
     template <typename Container>
-    SearchServer(Container stop_words_to_add);
-    SearchServer(const std::string& stop_words_text) : SearchServer(SplitIntoWords(stop_words_text)) {}
+    explicit SearchServer(Container stop_words_to_add);
+    explicit SearchServer(const std::string& stop_words_text) : SearchServer(SplitIntoWords(stop_words_text)) {}
 #pragma endregion
-    void AddDocument(int document_id, const std::string& document, DocumentStatus status, const std::vector<int>& ratings);
+    void AddDocument(int document_id, const std::string& text_document, DocumentStatus status, const std::vector<int>& ratings);
+    void RemoveDocument(int document_id);
 
     template <typename SortingFunction>
     std::vector<Document> FindTopDocuments(const std::string& raw_query, SortingFunction func) const;
@@ -33,8 +35,46 @@ public:
     std::tuple<std::vector<std::string>, DocumentStatus> MatchDocument(const std::string& raw_query, int document_id) const;
 
     int GetDocumentCount() const;
+    const std::map<std::string, double> GetWordFrequencies(int document_id) const
+    {
+        std::map<std::string, double> result;
 
-    int GetDocumentId(int index);
+        // Tiny, maybe unnecessary optimization
+        if (count(ids.begin(), ids.end(), document_id) == 0)
+            return result;
+
+        for (auto& [key, value] : SearchServer::word_to_document_freqs)
+        {
+            if (value.count(document_id) == 0)
+                continue;
+
+            result[key] = value.at(document_id);
+        }
+        return result;
+    }
+    bool CompareDocs(int doc_id_1, int doc_id_2)
+    {
+        std::map<std::string, double> freq_1 = GetWordFrequencies(doc_id_1);
+        std::map<std::string, double> freq_2 = GetWordFrequencies(doc_id_2);
+        if (freq_1.size() != freq_2.size())
+            return false;
+
+        for (auto i = freq_1.begin(), j = freq_2.begin(); i != freq_1.end(); i++, j++)
+        {
+            if ((*i).first != (*j).first)
+                return false;
+        }
+
+        return true;
+    }
+    auto begin()
+    {
+        return ids.begin();
+    }
+    auto end()
+    {
+        return ids.end();
+    }
 private:
     struct Rating_Status
     {
@@ -107,7 +147,6 @@ private:
     std::vector<Document> FindAllDocuments(Query query, SortingFunction func) const;
 }; // main class
 
-
 template <typename Container>
 SearchServer::SearchServer(Container stop_words_to_add)
 {
@@ -125,6 +164,7 @@ SearchServer::SearchServer(Container stop_words_to_add)
 template <typename SortingFunction>
 std::vector<Document> SearchServer::FindTopDocuments(const std::string& raw_query, SortingFunction func) const
 {
+    //LOG_DURATION_STREAM("Operation time", std::cout);
     // exeptions are handled inside of ParseQuery() function
     Query query_words = ParseQuery(raw_query);
     auto matched_documents = FindAllDocuments(query_words, func);
