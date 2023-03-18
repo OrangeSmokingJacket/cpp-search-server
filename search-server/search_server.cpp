@@ -2,6 +2,40 @@
 
 using namespace std;
 
+bool IsValidWord(const std::string& word)
+{
+    return none_of(word.begin(), word.end(), [](char c) { return c >= 0 && c <= 31; });
+}
+bool IsCorrectMinus(const std::string& word)
+{
+    if (word == "-")
+        return false; // last char is not minus
+    if (word[1] == '-') // couldn't be done in one if; will result in error if word has only ona character
+        return false;
+    return true;
+}
+bool IsMinusWord(const std::string& word)
+{
+    if (word[0] == '-')
+    {
+        if (IsCorrectMinus(word))
+            return true;
+        else
+            throw std::invalid_argument("Word: " + word + "; incorrect minus word.");
+    }
+    else
+        return false;
+}
+int ComputeIntegerAverage(const std::vector<int>& values)
+{
+    int size = static_cast<int>(values.size());
+
+    if (size == 0)
+        return 0;
+    else
+        return std::accumulate(values.begin(), values.end(), 0) / size;
+} // Basic average, exept result will be integer (not sure why)
+
 void SearchServer::AddDocument(int document_id, const string& text_document, DocumentStatus status, const vector<int>& ratings)
 {
     if (document_id < 0)
@@ -20,26 +54,23 @@ void SearchServer::AddDocument(int document_id, const string& text_document, Doc
     for (const string& word : words)
     {
         word_to_document_freqs[word][document_id] += inv_word_count;
+        document_word_frequencies[document_id][word] += inv_word_count;
     }
 
     doc_rating_status[document_id] = { ComputeIntegerAverage(ratings), status };
-    ids.push_back(document_id);
+    ids.insert(document_id);
 }
 void SearchServer::RemoveDocument(int document_id)
 {
     ids.erase(find(ids.begin(), ids.end(), document_id));
     doc_rating_status.erase(document_id);
-    for (auto i = word_to_document_freqs.begin(); i != word_to_document_freqs.end(); i++)
+
+    for (const auto [word, frequency] : document_word_frequencies[document_id])
     {
-        for (auto j = (*i).second.begin(); j != (*i).second.end(); j++)
-        {
-            if ((*j).first == document_id)
-            {
-                (*i).second.erase((*j).first);
-                break;
-            }
-        }
+        word_to_document_freqs[word].erase(document_id);
     }
+
+    document_word_frequencies.erase(document_id);
 }
 vector<Document> SearchServer::FindTopDocuments(const string& raw_query, DocumentStatus status) const
 {
@@ -73,6 +104,16 @@ tuple<vector<string>, DocumentStatus> SearchServer::MatchDocument(const string& 
 int SearchServer::GetDocumentCount() const
 {
     return static_cast<int>(doc_rating_status.size());
+}
+const map<string, double>& SearchServer::GetWordFrequencies(int document_id) const
+{
+    const static map<string, double> result;
+
+    //Tiny optimization
+    if (ids.count(document_id) == 0)
+        return result;
+
+    return document_word_frequencies.at(document_id);
 }
 
 bool SearchServer::IsStopWord(const string& word) const
@@ -121,7 +162,7 @@ SearchServer::Query SearchServer::ParseQuery(const string& text) const
     return query;
 }  // Returns 2 sets of plus and minus words separatly (in that order)
 
-double SearchServer::Calculate_IDF(const std::string& word) const
+double SearchServer::CalculateIDF(const std::string& word) const
 {
     double relevance = log(static_cast<int>(doc_rating_status.size()) / static_cast<double>(word_to_document_freqs.at(word).size()));
 

@@ -16,6 +16,11 @@
 const double EPSILON = 1e-6;
 const int MAX_RESULT_DOCUMENT_COUNT = 5;
 
+bool IsValidWord(const std::string& word);
+bool IsCorrectMinus(const std::string& word);
+bool IsMinusWord(const std::string& word);
+int ComputeIntegerAverage(const std::vector<int>& values);
+
 class SearchServer
 {
 public:
@@ -35,38 +40,7 @@ public:
     std::tuple<std::vector<std::string>, DocumentStatus> MatchDocument(const std::string& raw_query, int document_id) const;
 
     int GetDocumentCount() const;
-    const std::map<std::string, double> GetWordFrequencies(int document_id) const
-    {
-        std::map<std::string, double> result;
-
-        // Tiny, maybe unnecessary optimization
-        if (count(ids.begin(), ids.end(), document_id) == 0)
-            return result;
-
-        for (auto& [key, value] : SearchServer::word_to_document_freqs)
-        {
-            if (value.count(document_id) == 0)
-                continue;
-
-            result[key] = value.at(document_id);
-        }
-        return result;
-    }
-    bool CompareDocs(int doc_id_1, int doc_id_2)
-    {
-        std::map<std::string, double> freq_1 = GetWordFrequencies(doc_id_1);
-        std::map<std::string, double> freq_2 = GetWordFrequencies(doc_id_2);
-        if (freq_1.size() != freq_2.size())
-            return false;
-
-        for (auto i = freq_1.begin(), j = freq_2.begin(); i != freq_1.end(); i++, j++)
-        {
-            if ((*i).first != (*j).first)
-                return false;
-        }
-
-        return true;
-    }
+    const std::map<std::string, double>& GetWordFrequencies(int document_id) const;
     auto begin()
     {
         return ids.begin();
@@ -81,10 +55,11 @@ private:
         int rating;
         DocumentStatus status;
     };
+    std::map<int, std::map<std::string, double>> document_word_frequencies;
     std::map<std::string, std::map<int, double>> word_to_document_freqs;
     std::set<std::string> stop_words;
     std::map<int, Rating_Status> doc_rating_status;
-    std::vector<int> ids;
+    std::set<int> ids;
 
     struct Query
     {
@@ -103,45 +78,12 @@ private:
     };
 
     bool IsStopWord(const std::string& word) const; // check if it is a non relevant word
-    static bool IsValidWord(const std::string& word)
-    {
-        return none_of(word.begin(), word.end(), [](char c) { return c >= 0 && c <= 31; });
-    } // A valid word must not contain special characters
-    static bool IsMinusWord(const std::string& word)
-    {
-        if (word[0] == '-')
-        {
-            if (IsCorrectMinus(word))
-                return true;
-            else
-                throw std::invalid_argument("Word: " + word + "; incorrect minus word.");
-        }
-        else
-            return false;
-    } // For me it makes more sence to keep it here
-    static bool IsCorrectMinus(const std::string& word)
-    {
-        if (word == "-")
-            return false; // last char is not minus
-        if (word[1] == '-') // couldn't be done in one if; will result in error if word has only ona character
-            return false;
-        return true;
-    }
-    static int ComputeIntegerAverage(const std::vector<int>& values)
-    {
-        int size = static_cast<int>(values.size());
-
-        if (size == 0)
-            return 0;
-        else
-            return std::accumulate(values.begin(), values.end(), 0) / size;
-    } // Basic average, exept result will be integer (not sure why)
 
     Word ValidateWord(const std::string& word) const;
     std::vector<std::string> SplitIntoWordsNoStop(const std::string& text) const; // Parse text, excluding non important words
     Query ParseQuery(const std::string& text) const; // Returns 2 sets of plus and minus words separatly (in that order)
 
-    double Calculate_IDF(const std::string& word) const; // Inverse Document Frequency for word
+    double CalculateIDF(const std::string& word) const; // Inverse Document Frequency for word
 
     template <typename SortingFunction>
     std::vector<Document> FindAllDocuments(Query query, SortingFunction func) const;
@@ -169,7 +111,10 @@ std::vector<Document> SearchServer::FindTopDocuments(const std::string& raw_quer
     Query query_words = ParseQuery(raw_query);
     auto matched_documents = FindAllDocuments(query_words, func);
 
-    std::sort(matched_documents.begin(), matched_documents.end(), [](const Document& lhs, const Document& rhs) { return lhs.relevance > rhs.relevance || (std::abs(lhs.relevance - rhs.relevance) <= EPSILON && lhs.rating > rhs.rating); });
+    std::sort(matched_documents.begin(), matched_documents.end(),
+        [](const Document& lhs, const Document& rhs)
+        { return lhs.relevance > rhs.relevance || (std::abs(lhs.relevance - rhs.relevance) <= EPSILON && lhs.rating > rhs.rating); }
+    );
 
     if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT)
         matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
@@ -185,7 +130,7 @@ std::vector<Document> SearchServer::FindAllDocuments(Query query, SortingFunctio
     {
         if (word_to_document_freqs.count(word) == 0)
             continue;
-        double relevance = Calculate_IDF(word);
+        double relevance = CalculateIDF(word);
         for (const auto& [id, tf] : word_to_document_freqs.at(word))
         {
             if (!func(id, doc_rating_status.at(id).status, doc_rating_status.at(id).rating))
