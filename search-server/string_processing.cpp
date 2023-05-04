@@ -2,27 +2,31 @@
 
 using namespace std;
 
-vector<string> SplitIntoWords(const string& text)
+vector<string_view> SplitIntoWords(string_view text)
 {
-    vector<string> words;
-    string word;
-    for (const char c : text)
+    string_view str = text; // so we still will be able to pass const string_view here
+    vector<string_view> result;
+    if (str.empty())
+        return result;
+
+    size_t removal = str.find_first_not_of(" ");
+    str.remove_prefix((removal == str.npos) ? str.size() : removal);
+
+    while (!str.empty())
     {
-        if (c == ' ')
+        size_t space = str.find(' ');
+        if (space == str.npos)
         {
-            if (!word.empty())
-            {
-                words.push_back(word);
-                word.clear();
-            }
+            result.push_back(str.substr(0, str.size()));
+            break;
         }
         else
         {
-            word += c;
+            result.push_back(str.substr(0, space));
+            removal = str.find_first_not_of(" ", space);
+            str.remove_prefix((removal == str.npos) ? str.size() : removal);
         }
     }
-    if (!word.empty())
-        words.push_back(word);
 
-    return words;
+    return result;
 } // parse text into vector of words

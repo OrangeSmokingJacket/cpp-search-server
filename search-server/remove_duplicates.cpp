@@ -8,12 +8,12 @@ void RemoveDuplicates(SearchServer& search_server)
 		return;
 
 	vector<int> removed_ids;
-	set<vector<string>> unic_docs;
+	set<vector<string_view>> unic_docs;
 
 	for (int doc_id : search_server)
 	{
-		map<string, double> word_frequencies = search_server.GetWordFrequencies(doc_id);
-		vector<string> unic_words;
+		map<string_view, double> word_frequencies = search_server.GetWordFrequencies(doc_id);
+		vector<string_view> unic_words;
 		for (const auto& [key, value] : word_frequencies)
 		{
 			unic_words.push_back(key);
